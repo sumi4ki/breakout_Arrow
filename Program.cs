@@ -30,6 +30,8 @@ namespace MainGame
             _height = height;
             DrawRectangle((int)_xPos, (int)YPos, _width, _height, Color.White);
         }
+
+         
         
         // メインループで呼び出す
         public void Update()
@@ -43,7 +45,7 @@ namespace MainGame
             {
                 _xPos += _slideSpeed;
             }
-            // クランプ (注意：rectangle は左上の点が原点）
+            // windowからはみ出ないようにする (注意：rectangle は左上の点が原点）
             float leftSidePos = _xPos;
             float rightSidePos = _xPos + _width;
             if (leftSidePos < 0)
@@ -63,8 +65,8 @@ namespace MainGame
     internal class Ball
     {
         private float _radius = 15;
-        private float _xPos = 0;
-        private float _yPos = 0;
+        private Vector2 _position = new(0, 0);
+        public Vector2 Position => _position;
         private Vector2 _speed = new(5, 5);
         private Vector2 _dir = new(0, 0);
         public float Radius => _radius;
@@ -73,14 +75,14 @@ namespace MainGame
             get => _dir;
             set
             {
-                if (value.X == 0 || value.Y == 0)
+                if (Math.Abs(value.X) > 1 || Math.Abs(value.Y) > 1)
                 {
-                    throw new ArgumentException("0は入力できません");
+                    throw new ArgumentException("Directionの成分は絶対値1より小さくする");
                 }
                 else
                 {
-                    _dir.X = value.X > 0 ? 1 : -1;
-                    _dir.Y = value.Y > 0 ? 1 : -1;
+                    _dir.X = value.X;
+                    _dir.Y = value.Y;
                 }
             }
         }
@@ -88,16 +90,29 @@ namespace MainGame
         public Ball(int initXPos, int initYPos)
         {
             Direction = new(1, -1); // 最初は右上に飛ばす
-            _xPos = initXPos;
-            _yPos = initYPos;
+            _position = new Vector2(initXPos, initYPos);
         }
         public void Update()
         {
-            // 座標更新
-            _xPos += _speed.X * Direction.X;
-            _yPos += _speed.Y * Direction.Y;
 
-            DrawCircle((int)_xPos, (int)_yPos, _radius, Color.Red);
+            Vector2 nextFramePos = new(_position.X + _speed.X * Direction.X
+                                    , _position.Y + _speed.Y * Direction.Y);
+
+            // windowからはみ出さないようにする
+            if (nextFramePos.X - _radius < 0 || nextFramePos.X + _radius> Window.Width)
+            {
+                _dir.X *= -1;
+            }
+            else if (nextFramePos.Y - _radius< 0 || nextFramePos.Y + _radius > Window.Height)
+            {
+                _dir.Y *= -1;
+            }
+
+            // パドルの反射
+            // ブロックとの反射
+
+            _position = nextFramePos;
+            DrawCircle((int)_position.X, (int)_position.Y, _radius, Color.Beige);
         }
     }
     internal class Program
@@ -106,6 +121,7 @@ namespace MainGame
         {
             InitWindow(Window.Width, Window.Height, "ブロック崩し");
             SetTargetFPS(60);
+
             var paddle = new Paddle(90, 30);
             var ball = new Ball(Window.Width/2, Window.Height/2);
 
@@ -119,10 +135,10 @@ namespace MainGame
                 BeginDrawing();
                 ClearBackground(Color.Black);
 
-
                 DrawText("Hello!", 100, 100, 20, Color.White);
                 paddle.Update();
                 ball.Update();
+
                 EndDrawing();
             }
 
