@@ -5,60 +5,63 @@ using static Raylib_cs.Raylib;
 
 namespace MainGame
 {
-    internal static class Window{   // 値だけをもち、インスタンスかしないならstructよりclass
+    internal static class Window{   // 値だけをもち、インスタンス化しないならstructよりclass
         public const int Width = 800;
         public const int Height = 600;
     }
 
-    internal class Paddle
+    internal class Rectangle
     {
-        private float _xPos = 0;    
-        private float _yPos = 500;
-        private int _width = 0;
-        private int _height = 0;
-        private float _slideSpeed = 9;
-        public float XPos => _xPos;
-        public float YPos => _yPos;
+        protected Vector2 _position = new(0, 0);
+        protected int _width = 0;
+        protected int _height = 0;
+        public Vector2 Position => _position;
         public int Width => _width;
         public int Height => _height;
 
-        /// <param name="width">Paddle width</param>
-        /// <param name="height">Paddle height</param>
-        public Paddle(int width, int height){
-            _xPos= Window.Width/2;
+        public Rectangle(Vector2 position, int width, int height)
+        {
+            _position = position;
             _width = width;
             _height = height;
-            DrawRectangle((int)_xPos, (int)YPos, _width, _height, Color.White);
+        }
+    }
+    
+    internal class Paddle : Rectangle
+    {
+        private float _slideSpeed = 9;
+
+        public Paddle() : base(new(Window.Width, 500), 120, 20)
+        {
+            ;
         }
 
-         
-        
         // メインループで呼び出す
         public void Update()
         {
             // 移動処理
             if (Raylib.IsKeyDown(KeyboardKey.Left))
             {
-                _xPos -= _slideSpeed;
+                _position.X -= _slideSpeed;
             }
             else if (Raylib.IsKeyDown(KeyboardKey.Right))
             {
-                _xPos += _slideSpeed;
+                _position.X += _slideSpeed;
             }
             // windowからはみ出ないようにする (注意：rectangle は左上の点が原点）
-            float leftSidePos = _xPos;
-            float rightSidePos = _xPos + _width;
+            float leftSidePos = _position.X;
+            float rightSidePos = _position.X + _width;
             if (leftSidePos < 0)
             {
-                _xPos = 0;
+                _position.X = 0;
             }
             else if (rightSidePos > Window.Width)
             {
-                _xPos = Window.Width - _width;
+                _position.X = Window.Width - _width;
             }
 
             // 描画
-            DrawRectangle((int)_xPos, (int)_yPos, _width, _height, Color.White);
+            DrawRectangle((int)_position.X, (int)_position.Y, _width, _height, Color.White);
         }
     }
 
@@ -99,21 +102,92 @@ namespace MainGame
                                     , _position.Y + _speed.Y * Direction.Y);
 
             // windowからはみ出さないようにする
-            if (nextFramePos.X - _radius < 0 || nextFramePos.X + _radius> Window.Width)
+            if (nextFramePos.X - _radius < 0 || nextFramePos.X + _radius > Window.Width)
             {
                 _dir.X *= -1;
             }
-            else if (nextFramePos.Y - _radius< 0 || nextFramePos.Y + _radius > Window.Height)
+            else if (nextFramePos.Y - _radius < 0 || nextFramePos.Y + _radius > Window.Height)
             {
                 _dir.Y *= -1;
             }
 
-            // パドルの反射
-            // ブロックとの反射
-
             _position = nextFramePos;
             DrawCircle((int)_position.X, (int)_position.Y, _radius, Color.Beige);
         }
+        public void OnCollisionEnter() {}
+    }
+
+    internal class CollisionManager
+    {
+        Ball _ball;
+        Paddle _paddle;
+
+        public CollisionManager(Ball b, Paddle p)
+        {
+            _ball = b;
+            _paddle = p;
+        }
+
+        public void Update()
+        {
+            BallAndBlockCollisionCheck(_ball, _paddle);
+        }
+
+        // Ball クラスと Rectangle クラスの衝突
+        public bool BallAndBlockCollisionCheck(Ball ball, Rectangle block)
+        {
+            if (ball == null || block == null) return false;
+            Vector2 intersect = new(0, 0);  // ボールと長方形の最近点を求める
+
+            // 最近点のX座標
+            // ball.x がブロックより左にある時
+            if (ball.Position.X < block.Position.X)
+            {
+                intersect.X = block.Position.X; // 最近点のX座標は block の左辺
+            }
+            // ball.x がブロックより右にある時
+            else if (ball.Position.X > block.Position.X + block.Width)
+            {
+                intersect.X = block.Position.X + block.Width;   // 最近点のX座標は block の右辺
+            }
+            // ball.x がブロックの内側
+            else
+            {
+                intersect.X = ball.Position.X;
+            }
+
+            // 最近点のY座標
+            // ball.y がブロックより上にある時
+            if (ball.Position.Y < block.Position.Y)
+            {
+                intersect.Y = block.Position.Y; // 最近点のY座標は block の上辺
+            }
+            // ball.y がブロックより下にある時
+            else if (ball.Position.Y > block.Position.Y + block.Height)
+            {
+                intersect.Y = block.Position.Y + block.Height;    // 最近点のY座標は block の底辺
+            }
+            // ball.y がブロックより内側にある時
+            else
+            {
+                intersect.Y = ball.Position.Y;
+            }
+
+            // 求めた最近点とボールの中心座標で距離を計算して、それが半径より小さければ衝突
+            double distanseSqr = Math.Pow(ball.Position.X - intersect.X, 2) +
+                                    Math.Pow(ball.Position.Y - intersect.Y, 2);
+
+            if (distanseSqr < Math.Pow(ball.Radius, 2))
+            {
+                Console.WriteLine($"Ball{ball.Position}: collides Block{block.Position}");
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+        
     }
     internal class Program
     {
@@ -122,8 +196,9 @@ namespace MainGame
             InitWindow(Window.Width, Window.Height, "ブロック崩し");
             SetTargetFPS(60);
 
-            var paddle = new Paddle(90, 30);
-            var ball = new Ball(Window.Width/2, Window.Height/2);
+            var paddle = new Paddle();
+            var ball = new Ball(Window.Width / 2, Window.Height / 2);
+            var collisionManager = new CollisionManager(ball, paddle);
 
             // 2. メインループ
             while (!WindowShouldClose())
@@ -138,6 +213,7 @@ namespace MainGame
                 DrawText("Hello!", 100, 100, 20, Color.White);
                 paddle.Update();
                 ball.Update();
+                collisionManager.Update();
 
                 EndDrawing();
             }
