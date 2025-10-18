@@ -3,37 +3,45 @@ using System.Runtime.CompilerServices;
 using Raylib_cs;
 using static Raylib_cs.Raylib;
 
+// 衝突の検知方法の実装の仕方でブランチを分ければいいのでは？？？？
+// is/asがメイン。collisionInfo, compareTag, の二つはサブブランチで
 namespace MainGame
 {
-    internal static class Window{   // 値だけをもち、インスタンス化しないならstructよりclass
+    internal static class Window
+    {   // 値だけをもち、インスタンス化しないならstructよりclass
         public const int Width = 800;
         public const int Height = 600;
     }
 
-    internal class Rectangle
+    /*------------------------------------*/
+    /************ Rectangle ************/
+    /*------------------------------------*/
+    internal class Rectangle(Vector2 position, int width, int height, Color color)  // primary constructor
     {
-        protected Vector2 _position = new(0, 0);
-        protected int _width = 0;
-        protected int _height = 0;
+        private Color _color = color;
+        protected Vector2 _position = position;
+        protected int _width = width;
+        protected int _height = height;
         public Vector2 Position => _position;
         public int Width => _width;
         public int Height => _height;
 
-        public Rectangle(Vector2 position, int width, int height)
+        public void Draw()
         {
-            _position = position;
-            _width = width;
-            _height = height;
+            // 描画
+            DrawRectangle((int)_position.X, (int)_position.Y, _width, _height, _color);
         }
     }
-    
+
+    /*------------------------------------*/
+    /************ Paddle ************/
+    /*------------------------------------*/
     internal class Paddle : Rectangle
     {
         private float _slideSpeed = 9;
 
-        public Paddle() : base(new(Window.Width, 500), 120, 20)
+        public Paddle() : base(new(Window.Width, 500), 120, 20, Color.White)
         {
-            ;
         }
 
         // メインループで呼び出す
@@ -59,12 +67,12 @@ namespace MainGame
             {
                 _position.X = Window.Width - _width;
             }
-
-            // 描画
-            DrawRectangle((int)_position.X, (int)_position.Y, _width, _height, Color.White);
         }
     }
 
+    /*------------------------------------*/
+    /************ Ball ************/
+    /*------------------------------------*/
     internal class Ball
     {
         private float _radius = 15;
@@ -97,7 +105,7 @@ namespace MainGame
         }
         public void Update()
         {
-
+            // 物理更新のみ
             Vector2 nextFramePos = new(_position.X + _speed.X * Direction.X
                                     , _position.Y + _speed.Y * Direction.Y);
 
@@ -112,15 +120,21 @@ namespace MainGame
             }
 
             _position = nextFramePos;
+        }
+        public void Draw()
+        {
             DrawCircle((int)_position.X, (int)_position.Y, _radius, Color.Beige);
         }
-        public void OnCollisionEnter() {}
+        public void OnCollisionEnter() { }
     }
 
+    /*------------------------------------*/
+    /************ CollisionManager ************/
+    /*------------------------------------*/
     internal class CollisionManager
     {
-        Ball _ball;
-        Paddle _paddle;
+        readonly Ball _ball;
+        readonly Paddle _paddle;
 
         public CollisionManager(Ball b, Paddle p)
         {
@@ -130,44 +144,48 @@ namespace MainGame
 
         public void Update()
         {
-            BallAndBlockCollisionCheck(_ball, _paddle);
+            if (BallAndRectCollisionCheck(_ball, _paddle))
+            {
+                _ball.OnCollisionEnter();
+            }
         }
 
         // Ball クラスと Rectangle クラスの衝突
-        public bool BallAndBlockCollisionCheck(Ball ball, Rectangle block)
+        // 座標更新が行われた後に呼び出す。次フレームの座標で計算するため。
+        public static bool BallAndRectCollisionCheck(Ball ball, Rectangle rect)
         {
-            if (ball == null || block == null) return false;
+            if (ball == null || rect == null) return false;
             Vector2 intersect = new(0, 0);  // ボールと長方形の最近点を求める
 
             // 最近点のX座標
-            // ball.x がブロックより左にある時
-            if (ball.Position.X < block.Position.X)
+            // ball.x が rect より左にある時
+            if (ball.Position.X < rect.Position.X)
             {
-                intersect.X = block.Position.X; // 最近点のX座標は block の左辺
+                intersect.X = rect.Position.X; // 最近点のX座標は rect の左辺
             }
-            // ball.x がブロックより右にある時
-            else if (ball.Position.X > block.Position.X + block.Width)
+            // ball.x が rect より右にある時
+            else if (ball.Position.X > rect.Position.X + rect.Width)
             {
-                intersect.X = block.Position.X + block.Width;   // 最近点のX座標は block の右辺
+                intersect.X = rect.Position.X + rect.Width;   // 最近点のX座標は rect の右辺
             }
-            // ball.x がブロックの内側
+            // ball.x が rect の内側
             else
             {
                 intersect.X = ball.Position.X;
             }
 
             // 最近点のY座標
-            // ball.y がブロックより上にある時
-            if (ball.Position.Y < block.Position.Y)
+            // ball.y が rect より上にある時
+            if (ball.Position.Y < rect.Position.Y)
             {
-                intersect.Y = block.Position.Y; // 最近点のY座標は block の上辺
+                intersect.Y = rect.Position.Y; // 最近点のY座標は rect の上辺
             }
-            // ball.y がブロックより下にある時
-            else if (ball.Position.Y > block.Position.Y + block.Height)
+            // ball.y が rect より下にある時
+            else if (ball.Position.Y > rect.Position.Y + rect.Height)
             {
-                intersect.Y = block.Position.Y + block.Height;    // 最近点のY座標は block の底辺
+                intersect.Y = rect.Position.Y + rect.Height;    // 最近点のY座標は rect の底辺
             }
-            // ball.y がブロックより内側にある時
+            // ball.y が rect より内側にある時
             else
             {
                 intersect.Y = ball.Position.Y;
@@ -179,7 +197,7 @@ namespace MainGame
 
             if (distanseSqr < Math.Pow(ball.Radius, 2))
             {
-                Console.WriteLine($"Ball{ball.Position}: collides Block{block.Position}");
+                Console.WriteLine($"Ball{ball.Position}: collides Block{rect.Position}");
                 return true;
             }
             else
@@ -187,8 +205,12 @@ namespace MainGame
                 return false;
             }
         }
-        
+
     }
+
+    /*-----------------------------------*/
+    /************ main program *************/
+    /*-----------------------------------*/
     internal class Program
     {
         public static void Main(string[] args)
@@ -204,18 +226,23 @@ namespace MainGame
             while (!WindowShouldClose())
             {
                 // 更新処理（ゲームロジック）
-                // ここに当たり判定や移動処理を書く
+                // 座標更新
+                ball.Update();
+                paddle.Update();
+
+                // 物理処理（座標の更新はこれより前に済ませる）
+                collisionManager.Update();
 
                 // 描画処理
                 BeginDrawing();
                 ClearBackground(Color.Black);
 
                 DrawText("Hello!", 100, 100, 20, Color.White);
-                paddle.Update();
-                ball.Update();
-                collisionManager.Update();
+                ball.Draw();
+                paddle.Draw();
 
                 EndDrawing();
+
             }
 
             // 3. 終了処理
