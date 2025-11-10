@@ -1,173 +1,470 @@
 ﻿using System.Numerics;
-using System.Runtime.CompilerServices;
 using Raylib_cs;
 using static Raylib_cs.Raylib;
 
-namespace MainGame
+using Color = Raylib_cs.Color;
+
+// ブランチを変えたからここからスタート
+
+// 衝突の検知方法の実装の仕方でブランチを分ければいいのでは？？？？
+// is/asがメイン。collisionInfo, compareTag, の二つはサブブランチで
+namespace breakout_game
 {
-    internal static class Window{   // 値だけをもち、インスタンス化しないならstructよりclass
+    internal static class Window
+    {   // 値だけをもち、インスタンス化しないならstructよりclass
         public const int Width = 800;
         public const int Height = 600;
     }
 
+    internal interface ICollidable
+    {
+        public bool IsActive { get; }
+        void OnCollisionEnter(CollisionInfo other);
+    }
+
+    internal struct CollisionInfo
+    {
+        internal ICollidable Other { get; set; }
+        // internal Vector2 Normal { get; set; }　// 必要になったら実装
+        internal Vector2 Point { get; set; }
+    }
+
+
+    /*------------------------------------*/
+    /************ Rectangle ************/
+    /*------------------------------------*/
     internal class Rectangle
     {
-        protected Vector2 _position = new(0, 0);
-        protected int _width = 0;
-        protected int _height = 0;
-        public Vector2 Position => _position;
-        public int Width => _width;
-        public int Height => _height;
+        protected Vector2 _position;
+        protected int _width;
+        protected int _height;
+        private Color _color;
 
-        public Rectangle(Vector2 position, int width, int height)
+        public Rectangle(Vector2 position, int width, int height, Color color)
         {
             _position = position;
             _width = width;
             _height = height;
+            _color = color;
+        }
+
+        public Vector2 Position => _position;
+        public int Width => _width;
+        public int Height => _height;
+
+        public void Draw()
+        {
+            // 描画
+            DrawRectangle((int)_position.X, (int)_position.Y, _width, _height, _color);
         }
     }
-    
-    internal class Paddle : Rectangle
-    {
-        private float _slideSpeed = 9;
 
-        public Paddle() : base(new(Window.Width, 500), 120, 20)
+    /*------------------------------------*/
+    /************ Paddle ************/
+    /*------------------------------------*/
+    internal class Paddle : Rectangle, ICollidable
+    {
+        private Vector2 _nextPosition;
+        public Vector2 NextPosition => _nextPosition;
+        private readonly float _slideSpeed = 9;
+        public float SlideSpeed => _slideSpeed;
+        public bool IsActive { get; private set; } = true;
+
+        public Paddle() : base(new(Window.Width / 2, 500), 120, 20, Color.White)
         {
-            ;
         }
 
-        // メインループで呼び出す
-        public void Update()
+        // GameManagerのUpdateで呼び出さないと、Paddle が移動しない。
+        public void ComputeNextPosition()
         {
+            // _nextPosition = _position;
             // 移動処理
             if (Raylib.IsKeyDown(KeyboardKey.Left))
             {
-                _position.X -= _slideSpeed;
+                _nextPosition.X -= _slideSpeed;
             }
             else if (Raylib.IsKeyDown(KeyboardKey.Right))
             {
-                _position.X += _slideSpeed;
+                _nextPosition.X += _slideSpeed;
             }
             // windowからはみ出ないようにする (注意：rectangle は左上の点が原点）
-            float leftSidePos = _position.X;
-            float rightSidePos = _position.X + _width;
+            float leftSidePos = _nextPosition.X;
+            float rightSidePos = _nextPosition.X + _width;
             if (leftSidePos < 0)
             {
-                _position.X = 0;
+                _nextPosition.X = 0;
             }
             else if (rightSidePos > Window.Width)
             {
-                _position.X = Window.Width - _width;
+                _nextPosition.X = Window.Width - _width;
             }
+        }
+        public void ApplyNextPosition()
+        {
+            _position = _nextPosition;
+        }
+        // メインループで呼び出す
+        public void Update()
+        {
+            
 
-            // 描画
-            DrawRectangle((int)_position.X, (int)_position.Y, _width, _height, Color.White);
+        }
+
+        public void OnCollisionEnter(CollisionInfo info)
+        {
+            // 今のところパドル側で衝突時の処理はない
         }
     }
 
-    internal class Ball
+    public enum BlockType
     {
-        private float _radius = 15;
-        private Vector2 _position = new(0, 0);
-        public Vector2 Position => _position;
-        private Vector2 _speed = new(5, 5);
-        private Vector2 _dir = new(0, 0);
-        public float Radius => _radius;
-        public Vector2 Direction
+        Destructible, // 壊れるブロック
+        Wall          // 壁（壊れない）
+    }
+
+    public struct BlockGridConfig
+    {
+        public int Rows;
+        public int Cols;
+        public int BlockWidth;
+        public int BlockHeight;
+        public int StartX;
+        public int StartY;
+        public int Padding;
+    }
+
+    /*--------------------------------*/
+    /************ Block ************/
+    /*--------------------------------*/
+    // internal class Block : Rectangle, ICollidable
+    // {
+
+    //     protected BlockType _type;
+    //     public BlockType Type => _type;
+    //     protected bool _isActive = true;
+    //     public Block() : base(new(Window.Width, 500), 120, 20, Color.White)
+    //     {
+    //     }
+    //     public void OnCollisionEnter(CollisionInfo info)
+    //     {
+    //         // 今回は未実装
+    //     }
+    // }
+    internal abstract class Block : Rectangle, ICollidable
+    {
+        public bool IsActive { get; protected set; } = true;
+        public BlockType Type { get; protected set; }
+
+        public Block(Vector2 position, int width, int height, Color color) : base(position, width, height, color)
         {
-            get => _dir;
-            set
+            ;
+        }
+        // 衝突時の動作：派生クラスごとに変える想定
+        public abstract void OnCollisionEnter(CollisionInfo other);
+    }
+
+    internal class WallBlock(Vector2 position, int width, int height, Color color)
+                                : Block(position, width, height, color)
+    {
+        public override void OnCollisionEnter(CollisionInfo info)
+        {
+            // 壊れないので何もしない
+        }
+
+    }
+    internal class DeconstructibleBlock(Vector2 position, int width, int height, Color color)
+                                : Block(position, width, height, color)
+    {
+        public override void OnCollisionEnter(CollisionInfo info)
+        {
+            // 壊れる処理をここに実装
+            IsActive = false;
+        }
+
+    }
+
+    //あとGameManagerも別で作る予定
+    internal class BlockManager
+    {
+        private List<Block> _blocks = new List<Block>();
+        public List<Block> Blocks => _blocks;
+        public void CreateGridBlocks(BlockGridConfig config)
+        {
+            for (int row = 0; row < config.Rows; row++)
             {
-                if (Math.Abs(value.X) > 1 || Math.Abs(value.Y) > 1)
+                for (int col = 0; col < config.Cols; col++)
                 {
-                    throw new ArgumentException("Directionの成分は絶対値1より小さくする");
-                }
-                else
-                {
-                    _dir.X = value.X;
-                    _dir.Y = value.Y;
+                    int x = config.StartX + col * (config.BlockWidth + config.Padding);
+                    int y = config.StartY + row * (config.BlockHeight + config.Padding);
+                    string type;
+                    // // 境界条件でブロックタイプを決める
+                    // if (row == 0 || row == rows - 1 || col == 0 || col == cols - 1)
+                    // {
+                    //     // type = "wall";
+                    // }
+                    // else
+                    // {
+                    //     type = "deconstructible";
+                    // }
+                    // 種類が決まったらファクトリに任せる
+                    type = "deconstructible"; // とりあえず全部壊せるブロックで。種類が増えたら変更
+                    Block block = BlockFactory.CreateBlock(type, new Vector2(x, y), config.BlockWidth, config.BlockHeight, Color.White);
+                    _blocks.Add(block);
                 }
             }
+        }
+        
+        public void CreateBlocksFromPositions(List<(Vector2 position, int width, int height, string type)> blockParams)
+        {
+            foreach (var param in blockParams)
+            {
+                Block b = BlockFactory.CreateBlock(param.type, param.position, param.width, param.height, Color.Gray);
+                _blocks.Add(b);
+            }
+        }
+
+        /*------------------------------------*/
+        /************ BlockFactory ************/
+        /*------------------------------------*/
+        // Factoryパターンの実装例 （静的クラス）。Blockの生成のみ担当。条件分岐は呼び出し元で行う。
+        internal static class BlockFactory
+        {
+            public static Block CreateBlock(string type, Vector2 position, int width, int height, Color color)
+            {
+                return type switch
+                {
+                    "wall" => new WallBlock(position, width, height, color),
+                    "deconstructible" => new DeconstructibleBlock(position, width, height, color),
+                    _ => throw new ArgumentException($"Unknown block type: {type}")
+                };
+            }
+        }
+
+        public void DrawBlocks()
+        {
+            foreach (var block in _blocks)
+            {
+                if (block.IsActive)
+                {
+                    block.Draw();
+                }
+
+            }
+        }
+    }
+
+    /*------------------------------------*/
+    /************ Ball ************/
+    /*------------------------------------*/
+    internal class Ball : ICollidable
+    {
+        private float _radius = 15;
+        public float Radius => _radius;
+        private Vector2 _position = new(0, 0);
+        public Vector2 Position => _position;
+        private Vector2 _nextFramePosition = new(0, 0);
+        public Vector2 NextFramePosition => _nextFramePosition;
+        public bool IsActive { get; private set; } = true;
+
+        private Vector2 _speed = new(10, 10);
+        private Vector2 _dir = new(0, 0);
+        public Vector2 Direction => _dir; // 読み取り専用
+        public float maxBounceAngle = 75f * (MathF.PI / 180f); // ラジアンに変換
+        public void SetDirectionFromAngle(float angleRadians)
+        {
+            _dir.X = MathF.Cos(angleRadians);
+            _dir.Y = MathF.Sin(angleRadians);
+        }
+
+        /// <summary>
+        /// 角度（度数法）から方向ベクトルを設定する
+        /// 真上方向を0度、右回りに角度が増えるものとする
+        /// </summary>
+        /// <param name="angleDegrees"></param>
+        public void SetDirectionFromAngleDegrees(float angleDegrees)
+        {
+            float angleRadians = angleDegrees * MathF.PI / 180f;
+            // 上向き基準に変換
+            Console.WriteLine("angleRadians: " + angleRadians);
+            _dir.X = MathF.Cos(270 + angleRadians);
+            _dir.Y = MathF.Sin(270 + angleRadians);
         }
 
         public Ball(int initXPos, int initYPos)
         {
-            Direction = new(1, -1); // 最初は右上に飛ばす
+            SetDirectionFromAngle(MathF.PI / 2); // 45度上向き
             _position = new Vector2(initXPos, initYPos);
         }
-        public void Update()
+
+        public void ComputeNextPosition()
         {
 
-            Vector2 nextFramePos = new(_position.X + _speed.X * Direction.X
-                                    , _position.Y + _speed.Y * Direction.Y);
+            _nextFramePosition = _position + new Vector2(_speed.X * _dir.X, _speed.Y * _dir.Y);
+        }
 
-            // windowからはみ出さないようにする
-            if (nextFramePos.X - _radius < 0 || nextFramePos.X + _radius > Window.Width)
+        public void ResolveWallCollision(int windowWidth, int windowHeight)
+        {
+            if (_nextFramePosition.X - _radius < 0)
             {
                 _dir.X *= -1;
+                _nextFramePosition.X = _radius;
             }
-            else if (nextFramePos.Y - _radius < 0 || nextFramePos.Y + _radius > Window.Height)
+            else if (_nextFramePosition.X + _radius > windowWidth)
+            {
+                _dir.X *= -1;
+                _nextFramePosition.X = windowWidth - _radius;
+            }
+
+            if (_nextFramePosition.Y - _radius < 0)
             {
                 _dir.Y *= -1;
+                _nextFramePosition.Y = _radius;
             }
-
-            _position = nextFramePos;
-            DrawCircle((int)_position.X, (int)_position.Y, _radius, Color.Beige);
+            else if (_nextFramePosition.Y + _radius > windowHeight)
+            {
+                _dir.Y *= -1;
+                _nextFramePosition.Y = windowHeight - _radius;
+            }
         }
-        public void OnCollisionEnter() {}
-    }
 
-    internal class CollisionManager
-    {
-        Ball _ball;
-        Paddle _paddle;
-
-        public CollisionManager(Ball b, Paddle p)
+        public void ApplyNextPosition()
         {
-            _ball = b;
-            _paddle = p;
+            _position = _nextFramePosition;
         }
 
         public void Update()
         {
-            BallAndBlockCollisionCheck(_ball, _paddle);
+            // _nextFramePosition = new Vector2(_position.X + _speed.X * Direction.X
+            //                         , _position.Y + _speed.Y * Direction.Y);
+            // // windowからはみ出さないようにする
+            // if (_nextFramePosition.X - _radius < 0 || _nextFramePosition.X + _radius > Window.Width)
+            // {
+            //     _dir.X *= -1;
+            // }
+            // else if (_nextFramePosition.Y - _radius < 0 || _nextFramePosition.Y + _radius > Window.Height)
+            // {
+            //     _dir.Y *= -1;
+            // }
+
+            // _position = _nextFramePosition;
+            ComputeNextPosition();
         }
 
-        // Ball クラスと Rectangle クラスの衝突
-        public bool BallAndBlockCollisionCheck(Ball ball, Rectangle block)
+        public void Draw()
         {
-            if (ball == null || block == null) return false;
+            DrawCircle((int)_position.X, (int)_position.Y, _radius, Color.Beige);
+        }
+
+        public void OnCollisionEnter(CollisionInfo info)
+        {
+            if (info.Other is Paddle pd)
+            {
+                // info.Point と Paddle の中心のX座標の差を求める. マイナスなら中心より左、プラスなら右
+                float diffX = (pd.Position.X + (pd.Width / 2)) - _position.X;
+                // その差を Paddle の幅で割って、-1 ～ 1 の範囲に正規化する
+                float normalizedDiffX = diffX / (pd.Width / 2);
+                float bounceAngle = normalizedDiffX * maxBounceAngle;
+                SetDirectionFromAngleDegrees(bounceAngle);
+                ComputeNextPosition(); // 衝突後の次フレーム位置を再計算
+            }
+            if (info.Other is Block rect)
+            {
+                // 未実装
+            }
+        }
+    }
+
+    /*------------------------------------*/
+    /************ CollisionManager ************/
+    /*------------------------------------*/
+    internal static class CollisionManager
+    {
+        // private Ball _ball;
+        // private Paddle _paddle;
+        // private List<Block> _blocks = new List<Block>();
+
+        // public void RegisterObject(ICollidable obj)
+        // {
+        //     if (obj is Ball ball)
+        //     {
+        //         _ball = ball;
+        //     }
+        //     else if (obj is Paddle paddle)
+        //     {
+        //         _paddle = paddle;
+        //     }
+        // }
+        // public void RegisterObjects(List<ICollidable> objects)
+        // {
+
+        //     foreach (var obj in objects)
+        //     {
+        //         if (obj is Block block)
+        //         {
+        //             _blocks.Add(block);
+        //         }
+        //     }
+        // }
+
+
+        // public void Update()
+        // {
+        //     if (BallAndRectCollisionCheck(_ball, _paddle))
+        //     {
+        //         CollisionInfo info = new()
+        //         {
+        //             Other = _paddle,
+        //             Point = _paddle.Position,
+        //         };
+        //         _ball.OnCollisionEnter(info);
+        //     }
+
+        // }
+
+        // Ball クラスと Rectangle クラスの衝突
+        // 座標更新が行われた後に呼び出す。次フレームの座標で計算するため。
+        // TODO: 引数をposition, radius, rectPosition, rectWidth, rectHeight に変更する。
+        // そして、変更のためにバックアップを取る必要がある。
+        // よって、今までの変更を一旦git commit して、から変更を加える。
+        // そしてダメだったら、git checkout で戻す。
+        // →次回は、ひとまずgit commitを行うところから始める。これまでgit commitを怠っていた。変更をまとめる。
+        // 大きく変更があるのに,commit を怠っていた場合、どうやって対処しているのだろう。
+        public static bool BallAndRectCollisionCheck(Ball ball, Rectangle rect)
+        {
+            if (ball == null || rect == null) return false;
             Vector2 intersect = new(0, 0);  // ボールと長方形の最近点を求める
+            Vector2 nextBallPos = ball.NextFramePosition;
+            Vector2 NextRectPos = rect.Position;
 
             // 最近点のX座標
-            // ball.x がブロックより左にある時
-            if (ball.Position.X < block.Position.X)
+            // ball.x が rect より左にある時
+            if (ball.Position.X < rect.Position.X)
             {
-                intersect.X = block.Position.X; // 最近点のX座標は block の左辺
+                intersect.X = rect.Position.X; // 最近点のX座標は rect の左辺
             }
-            // ball.x がブロックより右にある時
-            else if (ball.Position.X > block.Position.X + block.Width)
+            // ball.x が rect より右にある時
+            else if (ball.Position.X > rect.Position.X + rect.Width)
             {
-                intersect.X = block.Position.X + block.Width;   // 最近点のX座標は block の右辺
+                intersect.X = rect.Position.X + rect.Width;   // 最近点のX座標は rect の右辺
             }
-            // ball.x がブロックの内側
+            // ball.x が rect の内側
             else
             {
                 intersect.X = ball.Position.X;
             }
 
             // 最近点のY座標
-            // ball.y がブロックより上にある時
-            if (ball.Position.Y < block.Position.Y)
+            // ball.y が rect より上にある時
+            if (ball.Position.Y < rect.Position.Y)
             {
-                intersect.Y = block.Position.Y; // 最近点のY座標は block の上辺
+                intersect.Y = rect.Position.Y; // 最近点のY座標は rect の上辺
             }
-            // ball.y がブロックより下にある時
-            else if (ball.Position.Y > block.Position.Y + block.Height)
+            // ball.y が rect より下にある時
+            else if (ball.Position.Y > rect.Position.Y + rect.Height)
             {
-                intersect.Y = block.Position.Y + block.Height;    // 最近点のY座標は block の底辺
+                intersect.Y = rect.Position.Y + rect.Height;    // 最近点のY座標は rect の底辺
             }
-            // ball.y がブロックより内側にある時
+            // ball.y が rect より内側にある時
             else
             {
                 intersect.Y = ball.Position.Y;
@@ -179,7 +476,7 @@ namespace MainGame
 
             if (distanseSqr < Math.Pow(ball.Radius, 2))
             {
-                Console.WriteLine($"Ball{ball.Position}: collides Block{block.Position}");
+                // Console.WriteLine($"Ball{ball.Position}: collides Block{rect.Position}");
                 return true;
             }
             else
@@ -187,8 +484,106 @@ namespace MainGame
                 return false;
             }
         }
-        
     }
+
+    /*-----------------------------------*/
+    /************ GameManager*************/
+    /*-----------------------------------*/
+    // TODO: ゲームマネージャーがどこまで責務を担当するか。
+    // ゲーム初期化とループの処理を追加する。
+    // _blockManagerのBlockはプロパティでアクセスで十分。CollisionManagerにも登録できる。
+    // 明日はゲームマネージャーを作り終えて、ゲームをとりあえず再生できるようにする。
+    internal class GameManager
+    {
+        private BlockManager _blockManager;
+        // private CollisionManager _collisionManager;
+        private Ball _ball = new Ball(Window.Width / 2, Window.Height / 2);
+        private Paddle _paddle = new Paddle();
+
+        public GameManager()
+        {
+            _blockManager = new BlockManager();
+            // _collisionManager = new CollisionManager();
+        }
+        public void Initialize()
+        {
+            _paddle = new Paddle();
+            _ball = new Ball(Window.Width / 2, Window.Height / 2);
+
+            // ブロックの作成（グリッド配置）
+            var config = new BlockGridConfig {
+                Rows = 5,
+                Cols = 10,
+                BlockWidth = 60,
+                BlockHeight = 20,
+                StartX = 50,
+                StartY = 50,
+                Padding = 5
+            };
+            _blockManager.CreateGridBlocks(config);
+
+            // 壁の作成
+            var wallThickness = 30;
+            var wallParams = new List<(Vector2 position, int width, int height, string type)>
+            {
+                (new Vector2(-wallThickness, wallThickness), Window.Width + wallThickness * 2, wallThickness, "wall"), // 上壁
+                (new Vector2(-wallThickness, 0), wallThickness, Window.Height, "wall"), // 左壁
+                (new Vector2(Window.Width, 0), wallThickness, Window.Height, "wall"), // 右壁
+                (new Vector2(-wallThickness, Window.Height), Window.Width + wallThickness * 2, wallThickness, "wall"), // 下壁
+            };
+            _blockManager.CreateBlocksFromPositions(wallParams);
+
+            //     // 衝突対象にブロックリストを登録
+            // var collidableList = new List<ICollidable>();
+            // foreach (var block in _blockManager.Blocks)
+            // {
+            //     collidableList.Add(block);
+            // }
+            // _collisionManager.RegisterObjects(collidableList);
+
+            // // ball, paddle の登録
+            // _collisionManager.RegisterObject(new Ball(Window.Width / 2, Window.Height / 2));
+            // _collisionManager.RegisterObject(new Paddle());
+
+            Console.WriteLine("Game initialized!");
+        }
+
+        public void Update()
+        {
+            _ball.ComputeNextPosition();
+            _paddle.ComputeNextPosition();
+
+            // TODO: GameMangerの責務を超えているように感じる。CollisionManagerに任せるべきか？
+            if (CollisionManager.BallAndRectCollisionCheck(_ball, _paddle))
+            {
+                CollisionInfo info = new()
+                {
+                    Other = _paddle,
+                    Point = _paddle.Position,
+                };
+                _ball.OnCollisionEnter(info);
+                // paddle 側の処理も呼び出す
+                CollisionInfo info2 = new()
+                {
+                    Other = _ball,
+                    Point = _paddle.Position,
+                };
+                _paddle.OnCollisionEnter(info2);
+            }
+
+            _ball.ResolveWallCollision(Window.Width, Window.Height);
+
+            _ball.ApplyNextPosition();
+            _paddle.ApplyNextPosition();
+            // 物理処理
+            _blockManager.DrawBlocks();
+            
+        }
+    }
+
+    /*-----------------------------------*/
+    /************ main program *************/
+    /*-----------------------------------*/
     internal class Program
     {
         public static void Main(string[] args)
@@ -196,26 +591,34 @@ namespace MainGame
             InitWindow(Window.Width, Window.Height, "ブロック崩し");
             SetTargetFPS(60);
 
-            var paddle = new Paddle();
-            var ball = new Ball(Window.Width / 2, Window.Height / 2);
-            var collisionManager = new CollisionManager(ball, paddle);
+            var gameManager = new GameManager();
+            gameManager.Initialize();
 
             // 2. メインループ
             while (!WindowShouldClose())
             {
                 // 更新処理（ゲームロジック）
-                // ここに当たり判定や移動処理を書く
+                // 座標更新
+                // ball.Update();
+                // paddle.Update();
+
+                // 物理処理
+                gameManager.Update();
+                // 応急処置で壁の判定はcollisionMnager .Update()の後に呼ぶようにする。
+                // ResolveWallCollision内で_nextFramePositionを書き換えてしまうため。
+
+                // ball.ApplyNextPosition();
 
                 // 描画処理
                 BeginDrawing();
                 ClearBackground(Color.Black);
 
-                DrawText("Hello!", 100, 100, 20, Color.White);
-                paddle.Update();
-                ball.Update();
-                collisionManager.Update();
+                // DrawText("Hello!", 100, 100, 20, Color.White);
+                // ball.Draw();
+                // paddle.Draw();
 
                 EndDrawing();
+
             }
 
             // 3. 終了処理
