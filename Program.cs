@@ -70,14 +70,14 @@ namespace breakout_game
         public float SlideSpeed => _slideSpeed;
         public bool IsActive { get; private set; } = true;
 
-        public Paddle() : base(new(Window.Width / 2, 500), 120, 20, Color.White)
+        public Paddle() : base(new(Window.Width / 2+ 120/2, 500), 120, 20, Color.White)
         {
         }
 
         // GameManagerのUpdateで呼び出さないと、Paddle が移動しない。
         public void ComputeNextPosition()
         {
-            // _nextPosition = _position;
+            _nextPosition = _position;
             // 移動処理
             if (Raylib.IsKeyDown(KeyboardKey.Left))
             {
@@ -269,7 +269,7 @@ namespace breakout_game
         private Vector2 _speed = new(10, 10);
         private Vector2 _dir = new(0, 0);
         public Vector2 Direction => _dir; // 読み取り専用
-        public float maxBounceAngle = 75f * (MathF.PI / 180f); // ラジアンに変換
+        public float maxBounceAngle = 75f;
         public void SetDirectionFromAngle(float angleRadians)
         {
             _dir.X = MathF.Cos(angleRadians);
@@ -283,11 +283,11 @@ namespace breakout_game
         /// <param name="angleDegrees"></param>
         public void SetDirectionFromAngleDegrees(float angleDegrees)
         {
-            float angleRadians = angleDegrees * MathF.PI / 180f;
-            // 上向き基準に変換
-            Console.WriteLine("angleRadians: " + angleRadians);
-            _dir.X = MathF.Cos(270 + angleRadians);
-            _dir.Y = MathF.Sin(270 + angleRadians);
+            // x軸は右向き。y軸は下向きだから、270度は真上。上向き基準に変換
+            float angleRadians = (angleDegrees+270) * MathF.PI / 180f;
+            Console.WriteLine("angleRadians: " + angleRadians + " for angleDegrees: " + angleDegrees+270);
+            _dir.X = MathF.Cos(angleRadians);
+            _dir.Y = MathF.Sin(angleRadians);
         }
 
         public Ball(int initXPos, int initYPos)
@@ -361,6 +361,7 @@ namespace breakout_game
             {
                 // info.Point と Paddle の中心のX座標の差を求める. マイナスなら中心より左、プラスなら右
                 float diffX = (pd.Position.X + (pd.Width / 2)) - _position.X;
+                diffX *= -1; // 右方向を正にするために反転 TODO: なぜ反転が必要なのか理解する
                 // その差を Paddle の幅で割って、-1 ～ 1 の範囲に正規化する
                 float normalizedDiffX = diffX / (pd.Width / 2);
                 float bounceAngle = normalizedDiffX * maxBounceAngle;
@@ -423,58 +424,51 @@ namespace breakout_game
 
         // Ball クラスと Rectangle クラスの衝突
         // 座標更新が行われた後に呼び出す。次フレームの座標で計算するため。
-        // TODO: 引数をposition, radius, rectPosition, rectWidth, rectHeight に変更する。
-        // そして、変更のためにバックアップを取る必要がある。
-        // よって、今までの変更を一旦git commit して、から変更を加える。
-        // そしてダメだったら、git checkout で戻す。
-        // →次回は、ひとまずgit commitを行うところから始める。これまでgit commitを怠っていた。変更をまとめる。
-        // 大きく変更があるのに,commit を怠っていた場合、どうやって対処しているのだろう。
-        public static bool BallAndRectCollisionCheck(Ball ball, Rectangle rect)
+        // ダメだったら、git checkout で戻す。
+        public static bool BallAndRectCollisionCheck(Vector2 ballPos, float ballRadius,
+                                                    Vector2 rectPos, int rectWidth, int rectHeight)
         {
-            if (ball == null || rect == null) return false;
             Vector2 intersect = new(0, 0);  // ボールと長方形の最近点を求める
-            Vector2 nextBallPos = ball.NextFramePosition;
-            Vector2 NextRectPos = rect.Position;
 
             // 最近点のX座標
             // ball.x が rect より左にある時
-            if (ball.Position.X < rect.Position.X)
+            if (ballPos.X < rectPos.X)
             {
-                intersect.X = rect.Position.X; // 最近点のX座標は rect の左辺
+                intersect.X = rectPos.X; // 最近点のX座標は rect の左辺
             }
             // ball.x が rect より右にある時
-            else if (ball.Position.X > rect.Position.X + rect.Width)
+            else if (ballPos.X > rectPos.X + rectWidth)
             {
-                intersect.X = rect.Position.X + rect.Width;   // 最近点のX座標は rect の右辺
+                intersect.X = rectPos.X + rectWidth;   // 最近点のX座標は rect の右辺
             }
             // ball.x が rect の内側
             else
             {
-                intersect.X = ball.Position.X;
+                intersect.X = ballPos.X;
             }
 
             // 最近点のY座標
             // ball.y が rect より上にある時
-            if (ball.Position.Y < rect.Position.Y)
+            if (ballPos.Y < rectPos.Y)
             {
-                intersect.Y = rect.Position.Y; // 最近点のY座標は rect の上辺
+                intersect.Y = rectPos.Y; // 最近点のY座標は rect の上辺
             }
             // ball.y が rect より下にある時
-            else if (ball.Position.Y > rect.Position.Y + rect.Height)
+            else if (ballPos.Y > rectPos.Y + rectHeight)
             {
-                intersect.Y = rect.Position.Y + rect.Height;    // 最近点のY座標は rect の底辺
+                intersect.Y = rectPos.Y + rectHeight;    // 最近点のY座標は rect の底辺
             }
             // ball.y が rect より内側にある時
             else
             {
-                intersect.Y = ball.Position.Y;
+                intersect.Y = ballPos.Y;
             }
 
             // 求めた最近点とボールの中心座標で距離を計算して、それが半径より小さければ衝突
-            double distanseSqr = Math.Pow(ball.Position.X - intersect.X, 2) +
-                                    Math.Pow(ball.Position.Y - intersect.Y, 2);
+            double distanseSqr = Math.Pow(ballPos.X - intersect.X, 2) +
+                                    Math.Pow(ballPos.Y - intersect.Y, 2);
 
-            if (distanseSqr < Math.Pow(ball.Radius, 2))
+            if (distanseSqr < Math.Pow(ballRadius, 2))
             {
                 // Console.WriteLine($"Ball{ball.Position}: collides Block{rect.Position}");
                 return true;
@@ -483,16 +477,13 @@ namespace breakout_game
             {
                 return false;
             }
-        }
+        } 
     }
 
     /*-----------------------------------*/
     /************ GameManager*************/
     /*-----------------------------------*/
-    // TODO: ゲームマネージャーがどこまで責務を担当するか。
-    // ゲーム初期化とループの処理を追加する。
-    // _blockManagerのBlockはプロパティでアクセスで十分。CollisionManagerにも登録できる。
-    // 明日はゲームマネージャーを作り終えて、ゲームをとりあえず再生できるようにする。
+    // ゲーム初期化とループの処理を追加する.
     internal class GameManager
     {
         private BlockManager _blockManager;
@@ -524,6 +515,7 @@ namespace breakout_game
 
             // 壁の作成
             var wallThickness = 30;
+            // TODO: wall ブロックが上だけはみ出てきている。
             var wallParams = new List<(Vector2 position, int width, int height, string type)>
             {
                 (new Vector2(-wallThickness, wallThickness), Window.Width + wallThickness * 2, wallThickness, "wall"), // 上壁
@@ -554,7 +546,7 @@ namespace breakout_game
             _paddle.ComputeNextPosition();
 
             // TODO: GameMangerの責務を超えているように感じる。CollisionManagerに任せるべきか？
-            if (CollisionManager.BallAndRectCollisionCheck(_ball, _paddle))
+            if (CollisionManager.BallAndRectCollisionCheck(_ball.NextFramePosition, _ball.Radius, _paddle.NextPosition, _paddle.Width, _paddle.Height))
             {
                 CollisionInfo info = new()
                 {
@@ -571,13 +563,17 @@ namespace breakout_game
                 _paddle.OnCollisionEnter(info2);
             }
 
+            // TODO: DeconstructibleBlock との衝突判定
+            
+
             _ball.ResolveWallCollision(Window.Width, Window.Height);
 
             _ball.ApplyNextPosition();
             _paddle.ApplyNextPosition();
             // 物理処理
             _blockManager.DrawBlocks();
-            
+            _ball.Draw();
+            _paddle.Draw();
         }
     }
 
