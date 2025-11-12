@@ -378,54 +378,75 @@ namespace breakout_game
     /*------------------------------------*/
     /************ CollisionManager ************/
     /*------------------------------------*/
-    internal static class CollisionManager
+    internal class CollisionManager
     {
-        // private Ball _ball;
-        // private Paddle _paddle;
-        // private List<Block> _blocks = new List<Block>();
+        private Ball _ball;
+        private Paddle _paddle;
+        private List<Block> _blocks = new List<Block>();
 
-        // public void RegisterObject(ICollidable obj)
-        // {
-        //     if (obj is Ball ball)
-        //     {
-        //         _ball = ball;
-        //     }
-        //     else if (obj is Paddle paddle)
-        //     {
-        //         _paddle = paddle;
-        //     }
-        // }
-        // public void RegisterObjects(List<ICollidable> objects)
-        // {
+        public CollisionManager() {}
 
-        //     foreach (var obj in objects)
-        //     {
-        //         if (obj is Block block)
-        //         {
-        //             _blocks.Add(block);
-        //         }
-        //     }
-        // }
+        public void SetBall(Ball ball) { _ball = ball; }
+        public void SetPaddle(Paddle paddle) { _paddle = paddle; }
+        public void SetBlocks(List<Block> blocks) { _blocks = blocks; }
 
+        public void Update()
+        {
+            // TODO:否定系を使わないif文はどうやるんだっけ？
+            if (_ball != null && _paddle != null)
+            {
+                if (BallRectCollisionCheck(_ball.NextFramePosition, _ball.Radius,
+                                        _paddle.NextPosition, _paddle.Width, _paddle.Height))
+                {
+                    CollisionInfo info = new()
+                    {
+                        Other = _paddle,
+                        Point = _paddle.Position,
+                    };
+                    _ball.OnCollisionEnter(info);
+                    // paddle 側の処理も呼び出す
+                    CollisionInfo info2 = new()
+                    {
+                        Other = _ball,
+                        Point = _ball.Position,
+                    };
+                    _paddle.OnCollisionEnter(info2);
+                }
+            }
+            
+            if(_blocks == null || _ball == null || _blocks.Count == 0)
+            {
+                return;
+            }
 
-        // public void Update()
-        // {
-        //     if (BallAndRectCollisionCheck(_ball, _paddle))
-        //     {
-        //         CollisionInfo info = new()
-        //         {
-        //             Other = _paddle,
-        //             Point = _paddle.Position,
-        //         };
-        //         _ball.OnCollisionEnter(info);
-        //     }
+            foreach (var block in _blocks)
+            {
+                if(BallRectCollisionCheck(_ball.NextFramePosition, _ball.Radius,
+                                        block.Position, block.Width, block.Height))
+                {
+                    CollisionInfo info = new()
+                    {
+                        Other = block,
+                        Point = block.Position,
+                    };
+                    _ball.OnCollisionEnter(info);
+                    // block 側の処理も呼び出す
+                    CollisionInfo info2 = new()
+                    {
+                        Other = _ball,
+                        Point = _ball.Position,
+                    };
+                    block.OnCollisionEnter(info2);
+                }
+            }
 
-        // }
+            // 
+        }
 
         // Ball クラスと Rectangle クラスの衝突
         // 座標更新が行われた後に呼び出す。次フレームの座標で計算するため。
         // ダメだったら、git checkout で戻す。
-        public static bool BallAndRectCollisionCheck(Vector2 ballPos, float ballRadius,
+        public static bool BallRectCollisionCheck(Vector2 ballPos, float ballRadius,
                                                     Vector2 rectPos, int rectWidth, int rectHeight)
         {
             Vector2 intersect = new(0, 0);  // ボールと長方形の最近点を求める
@@ -487,14 +508,14 @@ namespace breakout_game
     internal class GameManager
     {
         private BlockManager _blockManager;
-        // private CollisionManager _collisionManager;
+        private CollisionManager _collisionManager;
         private Ball _ball = new Ball(Window.Width / 2, Window.Height / 2);
         private Paddle _paddle = new Paddle();
 
         public GameManager()
         {
             _blockManager = new BlockManager();
-            // _collisionManager = new CollisionManager();
+            _collisionManager = new CollisionManager();
         }
         public void Initialize()
         {
@@ -525,17 +546,16 @@ namespace breakout_game
             };
             _blockManager.CreateBlocksFromPositions(wallParams);
 
-            //     // 衝突対象にブロックリストを登録
-            // var collidableList = new List<ICollidable>();
-            // foreach (var block in _blockManager.Blocks)
-            // {
-            //     collidableList.Add(block);
-            // }
-            // _collisionManager.RegisterObjects(collidableList);
-
-            // // ball, paddle の登録
-            // _collisionManager.RegisterObject(new Ball(Window.Width / 2, Window.Height / 2));
-            // _collisionManager.RegisterObject(new Paddle());
+            // 衝突対象にブロックリストを登録
+            var collidableList = new List<Block>();
+            foreach (var block in _blockManager.Blocks)
+            {
+                collidableList.Add(block);
+            }
+            
+            _collisionManager.SetBlocks(collidableList);
+            _collisionManager.SetBall(new Ball(Window.Width / 2, Window.Height / 2));
+            _collisionManager.SetPaddle(new Paddle());
 
             Console.WriteLine("Game initialized!");
         }
@@ -546,26 +566,26 @@ namespace breakout_game
             _paddle.ComputeNextPosition();
 
             // TODO: GameMangerの責務を超えているように感じる。CollisionManagerに任せるべきか？
-            if (CollisionManager.BallAndRectCollisionCheck(_ball.NextFramePosition, _ball.Radius, _paddle.NextPosition, _paddle.Width, _paddle.Height))
-            {
-                CollisionInfo info = new()
-                {
-                    Other = _paddle,
-                    Point = _paddle.Position,
-                };
-                _ball.OnCollisionEnter(info);
-                // paddle 側の処理も呼び出す
-                CollisionInfo info2 = new()
-                {
-                    Other = _ball,
-                    Point = _paddle.Position,
-                };
-                _paddle.OnCollisionEnter(info2);
-            }
-
+            // if (CollisionManager.BallRectCollisionCheck(_ball.NextFramePosition, _ball.Radius, _paddle.NextPosition, _paddle.Width, _paddle.Height))
+            // {
+            //     CollisionInfo info = new()
+            //     {
+            //         Other = _paddle,
+            //         Point = _paddle.Position,
+            //     };
+            //     _ball.OnCollisionEnter(info);
+            //     // paddle 側の処理も呼び出す
+            //     CollisionInfo info2 = new()
+            //     {
+            //         Other = _ball,
+            //         Point = _paddle.Position,
+            //     };
+            //     _paddle.OnCollisionEnter(info2);
+            // }
             // TODO: DeconstructibleBlock との衝突判定
-            
 
+            _collisionManager.Update();
+            
             _ball.ResolveWallCollision(Window.Width, Window.Height);
 
             _ball.ApplyNextPosition();
