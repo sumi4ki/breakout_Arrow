@@ -334,19 +334,6 @@ namespace breakout_game
 
         public void Update()
         {
-            // _nextFramePosition = new Vector2(_position.X + _speed.X * Direction.X
-            //                         , _position.Y + _speed.Y * Direction.Y);
-            // // windowからはみ出さないようにする
-            // if (_nextFramePosition.X - _radius < 0 || _nextFramePosition.X + _radius > Window.Width)
-            // {
-            //     _dir.X *= -1;
-            // }
-            // else if (_nextFramePosition.Y - _radius < 0 || _nextFramePosition.Y + _radius > Window.Height)
-            // {
-            //     _dir.Y *= -1;
-            // }
-
-            // _position = _nextFramePosition;
             ComputeNextPosition();
         }
 
@@ -370,7 +357,15 @@ namespace breakout_game
             }
             if (info.Other is Block rect)
             {
-                // 未実装
+                // TODO: *= -1はダメ。衝突時にブロックの上下右左の４つの面のうち、
+                // どの面に衝突したかを計算しなければ、正しい反射にならない。
+                //　衝突した面の計算をBall, ColManのどちらで行うかは要検討。
+                // ただ、また、this.NextPositionがblockのどの面にめり込むかを計算するのは
+                // 二度手間か？
+                
+                _dir *= -1;
+                Console.WriteLine("Ball collides Block at " + info.Point);
+                ComputeNextPosition();
             }
         }
     }
@@ -416,6 +411,11 @@ namespace breakout_game
             // Ball vs Blocks
             foreach (var block in _blocks)
             {
+                if(!block.IsActive)
+                {
+                    continue; // 非アクティブなブロックは無視
+                }
+
                 if (BallRectCollisionCheck(_ball.NextFramePosition, _ball.Radius,
                                             block.Position, block.Width, block.Height))
                 {
@@ -526,7 +526,7 @@ namespace breakout_game
             var wallThickness = 30;
             var wallParams = new List<(Vector2 position, int width, int height, string type)>
             {
-                (new Vector2(-wallThickness, wallThickness), Window.Width + wallThickness * 2, wallThickness, "wall"),
+                (new Vector2(-wallThickness, -wallThickness), Window.Width + wallThickness * 2, wallThickness, "wall"),
                 (new Vector2(-wallThickness, 0), wallThickness, Window.Height, "wall"),
                 (new Vector2(Window.Width, 0), wallThickness, Window.Height, "wall"),
                 (new Vector2(-wallThickness, Window.Height), Window.Width + wallThickness * 2, wallThickness, "wall"),
@@ -546,7 +546,7 @@ namespace breakout_game
             
             // 衝突判定
             _collisionManager.Update();
-            _ball.ResolveWallCollision(Window.Width, Window.Height);
+            // _ball.ResolveWallCollision(Window.Width, Window.Height);
             
             // 座標適用
             _ball.ApplyNextPosition();
