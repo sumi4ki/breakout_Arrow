@@ -1,4 +1,6 @@
 ﻿using System.Numerics;
+using System.Runtime.InteropServices;
+using System.Text;
 using Raylib_cs;
 using static Raylib_cs.Raylib;
 
@@ -25,8 +27,9 @@ namespace breakout_game
     internal struct CollisionInfo
     {
         internal ICollidable Other { get; set; }
-        // internal Vector2 Normal { get; set; }　// 必要になったら実装
-        internal Vector2 Point { get; set; }
+        internal Vector2 ContactPoint { get; set; }
+        internal float EntryTime{get; set;}
+        internal Vector2 Normal{get; set;}
     }
 
 
@@ -70,7 +73,7 @@ namespace breakout_game
         public float SlideSpeed => _slideSpeed;
         public bool IsActive { get; private set; } = true;
 
-        public Paddle() : base(new(Window.Width / 2+ 120/2, 500), 120, 20, Color.White)
+        public Paddle() : base(new(Window.Width / 2-30, 500), 120, 20, Color.White)
         {
         }
 
@@ -196,7 +199,7 @@ namespace breakout_game
                 {
                     int x = config.StartX + col * (config.BlockWidth + config.Padding);
                     int y = config.StartY + row * (config.BlockHeight + config.Padding);
-                    string type;
+                    BlockType type;
                     // // 境界条件でブロックタイプを決める
                     // if (row == 0 || row == rows - 1 || col == 0 || col == cols - 1)
                     // {
@@ -207,14 +210,14 @@ namespace breakout_game
                     //     type = "deconstructible";
                     // }
                     // 種類が決まったらファクトリに任せる
-                    type = "deconstructible"; // とりあえず全部壊せるブロックで。種類が増えたら変更
+                    type = BlockType.Destructible; // とりあえず全部壊せるブロックで。種類が増えたら変更
                     Block block = BlockFactory.CreateBlock(type, new Vector2(x, y), config.BlockWidth, config.BlockHeight, Color.White);
                     _blocks.Add(block);
                 }
             }
         }
         
-        public void CreateBlocksFromPositions(List<(Vector2 position, int width, int height, string type)> blockParams)
+        public void CreateBlocksFromPositions(List<(Vector2 position, int width, int height, BlockType type)> blockParams)
         {
             foreach (var param in blockParams)
             {
@@ -229,12 +232,12 @@ namespace breakout_game
         // Factoryパターンの実装例 （静的クラス）。Blockの生成のみ担当。条件分岐は呼び出し元で行う。
         internal static class BlockFactory
         {
-            public static Block CreateBlock(string type, Vector2 position, int width, int height, Color color)
+            public static Block CreateBlock(BlockType type, Vector2 position, int width, int height, Color color)
             {
                 return type switch
                 {
-                    "wall" => new WallBlock(position, width, height, color),
-                    "deconstructible" => new DeconstructibleBlock(position, width, height, color),
+                    BlockType.Wall => new WallBlock(position, width, height, color),
+                    BlockType.Destructible => new DeconstructibleBlock(position, width, height, color),
                     _ => throw new ArgumentException($"Unknown block type: {type}")
                 };
             }
@@ -266,15 +269,11 @@ namespace breakout_game
         public Vector2 NextFramePosition => _nextFramePosition;
         public bool IsActive { get; private set; } = true;
 
-        private Vector2 _speed = new(10, 10);
+        private Vector2 _speed = new(15, 15);
+        public Vector2 Speed => _speed;
         private Vector2 _dir = new(0, 0);
         public Vector2 Direction => _dir; // 読み取り専用
-        public float maxBounceAngle = 75f;
-        public void SetDirectionFromAngle(float angleRadians)
-        {
-            _dir.X = MathF.Cos(angleRadians);
-            _dir.Y = MathF.Sin(angleRadians);
-        }
+        public float maxBounceAngle = 60f;
 
         /// <summary>
         /// 角度（度数法）から方向ベクトルを設定する
@@ -292,14 +291,14 @@ namespace breakout_game
 
         public Ball(int initXPos, int initYPos)
         {
-            SetDirectionFromAngle(MathF.PI / 2); // 45度上向き
-            _position = new Vector2(initXPos, initYPos);
+            SetDirectionFromAngleDegrees(0); // 上向き
+            _position = new Vector2(initXPos, initYPos+100); // 初期位置
         }
 
         public void ComputeNextPosition()
         {
 
-            _nextFramePosition = _position + new Vector2(_speed.X * _dir.X, _speed.Y * _dir.Y);
+            _nextFramePosition = _position + _dir*_speed;
         }
 
         public void ResolveWallCollision(int windowWidth, int windowHeight)
@@ -355,17 +354,25 @@ namespace breakout_game
                 SetDirectionFromAngleDegrees(bounceAngle);
                 ComputeNextPosition(); // 衝突後の次フレーム位置を再計算
             }
-            if (info.Other is Block rect)
+            if (info.Other is Block)
             {
-                // TODO: *= -1はダメ。衝突時にブロックの上下右左の４つの面のうち、
-                // どの面に衝突したかを計算しなければ、正しい反射にならない。
-                //　衝突した面の計算をBall, ColManのどちらで行うかは要検討。
-                // ただ、また、this.NextPositionがblockのどの面にめり込むかを計算するのは
-                // 二度手間か？
-                
-                _dir *= -1;
-                Console.WriteLine("Ball collides Block at " + info.Point);
-                ComputeNextPosition();
+                // 衝突まで移動
+                _position += _dir * _speed * info.EntryTime;
+                // 反射
+                if(info.Normal.X == -1.0 || info.Normal.X == 1.0)
+                {
+                    _dir.X *= -1;
+                } else
+                {
+                    _dir.Y *= -1;
+                }
+                // 反射後の移動
+                _position += _dir * _speed * info.EntryTime/20;
+
+                // TODO: この例外処理は妥当か
+                // GameManagerでAlplyNextPosition呼ぶので、ここで_nextFramePositionを更新しておく
+                _nextFramePosition = _position;
+                Console.WriteLine("Ball collides Block at " + info.ContactPoint);
             }
         }
     }
@@ -390,20 +397,20 @@ namespace breakout_game
         public void Update()
         {
             // Ball vs Paddle
-            if (BallRectCollisionCheck(_ball.NextFramePosition, _ball.Radius,
+            if (BallPaddleCollisionCheck(_ball.NextFramePosition, _ball.Radius,
                                         _paddle.NextPosition, _paddle.Width, _paddle.Height))
             {
                 CollisionInfo info = new()
                 {
                     Other = _paddle,
-                    Point = _paddle.Position,
+                    ContactPoint = _paddle.Position,
                 };
                 _ball.OnCollisionEnter(info);
                 // paddle 側の処理も呼び出す
                 CollisionInfo info2 = new()
                 {
                     Other = _ball,
-                    Point = _ball.Position,
+                    ContactPoint = _ball.Position,
                 };
                 _paddle.OnCollisionEnter(info2);
             }
@@ -416,30 +423,93 @@ namespace breakout_game
                     continue; // 非アクティブなブロックは無視
                 }
 
-                if (BallRectCollisionCheck(_ball.NextFramePosition, _ball.Radius,
-                                            block.Position, block.Width, block.Height))
+                BallAndBlockCollision(_ball, block, out CollisionInfo toBallInfo);
+
+                if (toBallInfo.EntryTime == -1.0f)
                 {
-                    CollisionInfo info = new()
-                    {
-                        Other = block,
-                        Point = block.Position,
-                    };
-                    _ball.OnCollisionEnter(info);
-                    // block 側の処理も呼び出す
-                    CollisionInfo info2 = new()
-                    {
-                        Other = _ball,
-                        Point = _ball.Position,
-                    };
-                    block.OnCollisionEnter(info2);
+                    continue;
                 }
+                
+                _ball.OnCollisionEnter(toBallInfo);
+
+                // block に通知
+                CollisionInfo info2 = new() { Other = _ball };
+                block.OnCollisionEnter(info2);
             }
+        }
+
+        public static void BallAndBlockCollision(Ball ball, Block block, out CollisionInfo info)
+        {
+            // block をボールの半径分だけ拡大したAABBを考える
+            float expand_left = block.Position.X - ball.Radius;
+            float expand_right = block.Position.X + block.Width + ball.Radius; 
+            float expand_upper = block.Position.Y - ball.Radius;
+            float expand_lower = block.Position.Y + block.Height + ball.Radius;
+
+            info = new CollisionInfo{ Other = block };
+            Vector2 normal;
+            Vector2 vel = ball.Direction * ball.Speed;
+            float dxEntry, dxExit, dyEntry, dyExit;
+            
+            if(vel.X > 0)
+            {
+                dxEntry = expand_left - ball.Position.X;
+                dxExit = expand_right - ball.Position.X;
+                normal.X = -1.0f;
+            } else
+            {
+                dxEntry = expand_right - ball.Position.X;
+                dxExit = expand_left - ball.Position.X;
+                normal.X = 1.0f;
+            }
+
+            if(vel.Y > 0)
+            {
+                dyEntry = expand_upper - ball.Position.Y;
+                dyExit = expand_lower - ball.Position.Y;
+                normal.Y = -1.0f;
+            } else
+            {
+                dyEntry = expand_lower - ball.Position.Y;
+                dyExit = expand_upper - ball.Position.Y;
+                normal.Y = 1.0f;
+            }
+            
+            float txEntry = dxEntry / vel.X;
+            float tyEntry = dyEntry / vel.Y;
+            float txExit = dxExit / vel.X;
+            float tyExit = dyExit / vel.Y;
+
+            float maxEntry, minExit;
+            // 衝突開始時間はEntryの大きい方
+            if(txEntry > tyEntry)
+            {
+                maxEntry = txEntry;
+                normal.Y = 0.0f;
+            } else
+            {
+                maxEntry = tyEntry;
+                normal.X = 0.0f;
+            }
+            // 衝突終了時間はExitの小さい方
+            minExit = Math.Min(txExit, tyExit);
+            
+            info.Normal = normal;
+            // 例）ボールが右側に移動していて、ブロックがそれより左にある。
+            if(maxEntry < 0 || minExit < 0 || maxEntry > 1.0)
+            {
+                info.EntryTime = -1.0f; // 衝突なし
+                return;    
+            }
+
+            info.EntryTime = maxEntry;
+            return;
         }
 
         // Ball クラスと Rectangle クラスの衝突
         // 座標更新が行われた後に呼び出す。次フレームの座標で計算するため。
         // ダメだったら、git checkout で戻す。
-        public static bool BallRectCollisionCheck(Vector2 ballPos, float ballRadius,
+        public static bool BallPaddleCollisionCheck(Vector2 ballPos, float ballRadius,
                                                     Vector2 rectPos, int rectWidth, int rectHeight)
         {
             Vector2 intersect = new(0, 0);  // ボールと長方形の最近点を求める
@@ -524,12 +594,13 @@ namespace breakout_game
             _blockManager.CreateGridBlocks(config);
     
             var wallThickness = 30;
-            var wallParams = new List<(Vector2 position, int width, int height, string type)>
+            var wallParams = new List<(Vector2 position, int width, int height, BlockType type)>
             {
-                (new Vector2(-wallThickness, -wallThickness), Window.Width + wallThickness * 2, wallThickness, "wall"),
-                (new Vector2(-wallThickness, 0), wallThickness, Window.Height, "wall"),
-                (new Vector2(Window.Width, 0), wallThickness, Window.Height, "wall"),
-                (new Vector2(-wallThickness, Window.Height), Window.Width + wallThickness * 2, wallThickness, "wall"),
+                (new Vector2(-wallThickness, -wallThickness), Window.Width + wallThickness * 2, wallThickness, BlockType.Wall),
+                (new Vector2(-wallThickness, 0), wallThickness, Window.Height, BlockType.Wall),
+                (new Vector2(Window.Width, 0), wallThickness, Window.Height, BlockType.Wall),
+                (new Vector2(-wallThickness, Window.Height), Window.Width + wallThickness * 2, wallThickness, BlockType.Wall),
+                (new Vector2(Window.Width/2, _ball.Position.Y-_ball.Radius-wallThickness-5),  wallThickness, wallThickness, BlockType.Destructible)
             };
             _blockManager.CreateBlocksFromPositions(wallParams);
     
