@@ -412,7 +412,7 @@ namespace breakout_game
             _blocks = blocks ?? throw new ArgumentNullException(nameof(blocks));
         }
 
-        public void Update()
+        public void BallMove()
         {
             // Ball vs Paddle
             if (BallPaddleCollisionCheck(_ball, _paddle))
@@ -433,6 +433,7 @@ namespace breakout_game
             }
 
             // Ball vs Blocks
+            float remainingTime = 1.0f; // 1フレーム分の時間
             foreach (var block in _blocks)
             {
                 if(!block.IsActive)
@@ -443,23 +444,23 @@ namespace breakout_game
                 BallPaddleCollisionCheck(_ball, block);
                 
                 // Swept AABB 衝突判定
-                float remainingTime = 1.0f;
                 var toBallInfo = new CollisionInfo();
 
                 while (remainingTime > 0.05f)    // 微小時間まで繰り返す
                 {
                     BallAndBlockCollision(_ball, block, remainingTime, out toBallInfo); 
-                    // 衝突しない場合は、そのまま移動してループを抜ける 
+                    // 衝突しない場合は、ループを抜ける
                     if (toBallInfo.EntryTime == -1.0f)
                     {
-                        _ball.SetNextPosition(_ball.Direction * _ball.Speed * remainingTime + _ball.Position);
-                        _ball.ApplyNextPosition();
                         break;
                     }
 
-                    // 衝突まで移動
+                    // 衝突する場合は、衝突まで移動
                     _ball.SetNextPosition(_ball.Direction * _ball.Speed * toBallInfo.EntryTime + _ball.Position);   
                     _ball.ApplyNextPosition();
+                    // 衝突した block に通知
+                    CollisionInfo info2 = new() { Other = _ball };
+                    block.OnCollisionEnter(info2);
 
                     // 反射
                     if(toBallInfo.Normal.X == -1.0 || toBallInfo.Normal.X == 1.0)
@@ -467,15 +468,14 @@ namespace breakout_game
                         _ball.ReflectYAxis();
                     } else
                     {
-                        _ball.ReflectYAxis();
+                        _ball.ReflectXAxis();
                     }
                     remainingTime -= toBallInfo.EntryTime;               // まだ時間が残っているので継続
                 }
-
-                // block に通知
-                CollisionInfo info2 = new() { Other = _ball };
-                block.OnCollisionEnter(info2);
             }
+            // 残り時間分移動
+            _ball.SetNextPosition(_ball.Direction * _ball.Speed * remainingTime + _ball.Position);
+            _ball.ApplyNextPosition();
         }
 
         // Swept AABB 衝突判定（ball は動き、block は静止している場合）
@@ -703,7 +703,7 @@ namespace breakout_game
             _paddle.ComputeNextPosition();
             
             // 物理演算・衝突判定
-            _collisionManager.Update();
+            _collisionManager.BallMove();
             
             // 座標適用
             // _ball.ApplyNextPosition();
