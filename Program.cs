@@ -1,4 +1,5 @@
-﻿using System.Numerics;
+﻿using System.Net;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
 using Raylib_cs;
@@ -289,6 +290,15 @@ namespace breakout_game
             _dir.Y = MathF.Sin(angleRadians);
         }
 
+        public void ReflectXAxis()
+        {
+            _dir.Y *= -1;
+        }
+        public void ReflectYAxis()
+        {
+            _dir.X *= -1;
+        }
+
         public Ball(int initXPos, int initYPos)
         {
             SetDirectionFromAngleDegrees(0); // 上向き
@@ -358,26 +368,28 @@ namespace breakout_game
                 float bounceAngle = normalizedDiffX * maxBounceAngle;
                 SetDirectionFromAngleDegrees(bounceAngle);
                 ComputeNextPosition(); // 衝突後の次フレーム位置を再計算
-                Console.WriteLine("Ball collides Block at " + _position);
+                ApplyNextPosition();
+                Console.WriteLine("Ball collides Paddle at " + _position);
             }
             if (info.Other is Block)
             {
-                // 衝突まで移動
-                _position += _dir * _speed * info.EntryTime;
-                // 反射
-                if(info.Normal.X == -1.0 || info.Normal.X == 1.0)
-                {
-                    _dir.X *= -1;
-                } else
-                {
-                    _dir.Y *= -1;
-                }
-                // 反射後の移動
-                _position += _dir * _speed * info.EntryTime/20;
+                Console.WriteLine("Ball collides Block at " + info.Normal);
+                // // 衝突まで移動
+                // _position += _dir * _speed * info.EntryTime;
+                // // 反射
+                // if(info.Normal.X == -1.0 || info.Normal.X == 1.0)
+                // {
+                //     _dir.X *= -1;
+                // } else
+                // {
+                //     _dir.Y *= -1;
+                // }
+                // // 反射後の移動
+                // _position += _dir * _speed * info.EntryTime/20;
 
-                // TODO: この例外処理は妥当か
-                // GameManagerでAlplyNextPosition呼ぶので、ここで_nextFramePositionを更新しておく
-                _nextFramePosition = _position;
+                // // TODO: この例外処理は妥当か
+                // // GameManagerでAlplyNextPosition呼ぶので、ここで_nextFramePositionを更新しておく
+                // _nextFramePosition = _position;
                 // Console.WriteLine("Ball collides Block at " + info.Normal);
             }
         }
@@ -428,16 +440,37 @@ namespace breakout_game
                     continue; // 非アクティブなブロックは無視
                 }
                 // すでに衝突している場合、押し戻す
+                BallPaddleCollisionCheck(_ball, block);
                 
                 // Swept AABB 衝突判定
-                BallAndBlockCollision(_ball, block, out CollisionInfo toBallInfo);
+                float remainingTime = 1.0f;
+                var toBallInfo = new CollisionInfo();
 
-                if (toBallInfo.EntryTime == -1.0f)
+                while (remainingTime > 0.05f)    // 微小時間まで繰り返す
                 {
-                    continue;
+                    BallAndBlockCollision(_ball, block, remainingTime, out toBallInfo); 
+                    // 衝突しない場合は、そのまま移動してループを抜ける 
+                    if (toBallInfo.EntryTime == -1.0f)
+                    {
+                        _ball.SetNextPosition(_ball.Direction * _ball.Speed * remainingTime + _ball.Position);
+                        _ball.ApplyNextPosition();
+                        break;
+                    }
+
+                    // 衝突まで移動
+                    _ball.SetNextPosition(_ball.Direction * _ball.Speed * toBallInfo.EntryTime + _ball.Position);   
+                    _ball.ApplyNextPosition();
+
+                    // 反射
+                    if(toBallInfo.Normal.X == -1.0 || toBallInfo.Normal.X == 1.0)
+                    {
+                        _ball.ReflectYAxis();
+                    } else
+                    {
+                        _ball.ReflectYAxis();
+                    }
+                    remainingTime -= toBallInfo.EntryTime;               // まだ時間が残っているので継続
                 }
-                
-                _ball.OnCollisionEnter(toBallInfo);
 
                 // block に通知
                 CollisionInfo info2 = new() { Other = _ball };
@@ -446,7 +479,7 @@ namespace breakout_game
         }
 
         // Swept AABB 衝突判定（ball は動き、block は静止している場合）
-        public static void BallAndBlockCollision(Ball ball, Block block, out CollisionInfo info)
+        public static void BallAndBlockCollision(Ball ball, Block block, float moveTime, out CollisionInfo info)
         {
             // block をボールの半径分だけ拡大したAABBを考える
             float expand_left = block.Position.X - ball.Radius;
@@ -483,10 +516,10 @@ namespace breakout_game
                 normal.Y = 1.0f;
             }
             
-            float txEntry = dxEntry / vel.X;
-            float tyEntry = dyEntry / vel.Y;
-            float txExit = dxExit / vel.X;
-            float tyExit = dyExit / vel.Y;
+            float txEntry = dxEntry / vel.X*moveTime;
+            float tyEntry = dyEntry / vel.Y*moveTime;
+            float txExit = dxExit / vel.X*moveTime;
+            float tyExit = dyExit / vel.Y*moveTime;
 
             float maxEntry, minExit;
             // 衝突開始時間はEntryの大きい方
@@ -654,7 +687,7 @@ namespace breakout_game
                 (new Vector2(-wallThickness, 0), wallThickness, Window.Height, BlockType.Wall),
                 (new Vector2(Window.Width, 0), wallThickness, Window.Height, BlockType.Wall),
                 (new Vector2(-wallThickness, Window.Height), Window.Width + wallThickness * 2, wallThickness, BlockType.Wall),
-                (new Vector2(Window.Width/2, _ball.Position.Y-_ball.Radius-wallThickness-5),  wallThickness, wallThickness, BlockType.Destructible)
+                // (new Vector2(Window.Width/2, _ball.Position.Y-_ball.Radius-wallThickness-5),  wallThickness, wallThickness, BlockType.Destructible)
             };
             _blockManager.CreateBlocksFromPositions(wallParams);
     
@@ -669,11 +702,11 @@ namespace breakout_game
             _ball.ComputeNextPosition();
             _paddle.ComputeNextPosition();
             
-            // 衝突判定
+            // 物理演算・衝突判定
             _collisionManager.Update();
             
             // 座標適用
-            _ball.ApplyNextPosition();
+            // _ball.ApplyNextPosition();
             _paddle.ApplyNextPosition();
 
             // 描画
@@ -704,22 +737,38 @@ namespace breakout_game
                 // ball.Update();
                 // paddle.Update();
 
-                // 物理処理
-                gameManager.Update();
-                // 応急処置で壁の判定はcollisionMnager .Update()の後に呼ぶようにする。
-                // ResolveWallCollision内で_nextFramePositionを書き換えてしまうため。
-
-                // ball.ApplyNextPosition();
-
-                // 描画処理
+                // スペースキーを押している間だけ1フレーム分進める。
+                // ポーズ中に 'N' キーで1フレームだけ進めたい場合も有効。
                 BeginDrawing();
+                if (IsKeyDown(KeyboardKey.Space) || IsKeyPressed(KeyboardKey.N))
+                {
+                   
+                    
+                }
+                
+                 
+                gameManager.Update();
                 ClearBackground(Color.Black);
-
-                // DrawText("Hello!", 100, 100, 20, Color.White);
-                // ball.Draw();
-                // paddle.Draw();
-
                 EndDrawing();
+
+                // 描画処理（常に行う）
+                
+                // 物理処理
+                // gameManager.Update();
+                // // 応急処置で壁の判定はcollisionMnager .Update()の後に呼ぶようにする。
+                // // ResolveWallCollision内で_nextFramePositionを書き換えてしまうため。
+
+                // // ball.ApplyNextPosition();
+
+                // // 描画処理
+                // BeginDrawing();
+                // ClearBackground(Color.Black);
+
+                // // DrawText("Hello!", 100, 100, 20, Color.White);
+                // // ball.Draw();
+                // // paddle.Draw();
+
+                // EndDrawing();
 
             }
 
