@@ -269,7 +269,7 @@ namespace breakout_game
         public Vector2 NextFramePosition => _nextFramePosition;
         public bool IsActive { get; private set; } = true;
 
-        private Vector2 _speed = new(15, 15);
+        private Vector2 _speed = new(10, 10);
         public Vector2 Speed => _speed;
         private Vector2 _dir = new(0, 0);
         public Vector2 Direction => _dir; // 読み取り専用
@@ -284,7 +284,7 @@ namespace breakout_game
         {
             // x軸は右向き。y軸は下向きだから、270度は真上。上向き基準に変換
             float angleRadians = (angleDegrees+270) * MathF.PI / 180f;
-            Console.WriteLine("angleRadians: " + angleRadians + " for angleDegrees: " + angleDegrees+270);
+            Console.WriteLine("angleRadians: " + angleRadians + " for angleDegrees: " + (angleDegrees+270));
             _dir.X = MathF.Cos(angleRadians);
             _dir.Y = MathF.Sin(angleRadians);
         }
@@ -331,6 +331,11 @@ namespace breakout_game
             _position = _nextFramePosition;
         }
 
+        public void SetNextPosition(Vector2 pos)
+        {
+            _nextFramePosition = pos;
+        }
+
         public void Update()
         {
             ComputeNextPosition();
@@ -353,6 +358,7 @@ namespace breakout_game
                 float bounceAngle = normalizedDiffX * maxBounceAngle;
                 SetDirectionFromAngleDegrees(bounceAngle);
                 ComputeNextPosition(); // 衝突後の次フレーム位置を再計算
+                Console.WriteLine("Ball collides Block at " + _position);
             }
             if (info.Other is Block)
             {
@@ -372,7 +378,7 @@ namespace breakout_game
                 // TODO: この例外処理は妥当か
                 // GameManagerでAlplyNextPosition呼ぶので、ここで_nextFramePositionを更新しておく
                 _nextFramePosition = _position;
-                Console.WriteLine("Ball collides Block at " + info.ContactPoint);
+                // Console.WriteLine("Ball collides Block at " + info.Normal);
             }
         }
     }
@@ -397,8 +403,7 @@ namespace breakout_game
         public void Update()
         {
             // Ball vs Paddle
-            if (BallPaddleCollisionCheck(_ball.NextFramePosition, _ball.Radius,
-                                        _paddle.NextPosition, _paddle.Width, _paddle.Height))
+            if (BallPaddleCollisionCheck(_ball, _paddle))
             {
                 CollisionInfo info = new()
                 {
@@ -422,7 +427,9 @@ namespace breakout_game
                 {
                     continue; // 非アクティブなブロックは無視
                 }
-
+                // すでに衝突している場合、押し戻す
+                
+                // Swept AABB 衝突判定
                 BallAndBlockCollision(_ball, block, out CollisionInfo toBallInfo);
 
                 if (toBallInfo.EntryTime == -1.0f)
@@ -438,6 +445,7 @@ namespace breakout_game
             }
         }
 
+        // Swept AABB 衝突判定（ball は動き、block は静止している場合）
         public static void BallAndBlockCollision(Ball ball, Block block, out CollisionInfo info)
         {
             // block をボールの半径分だけ拡大したAABBを考える
@@ -506,24 +514,29 @@ namespace breakout_game
             return;
         }
 
-        // Ball クラスと Rectangle クラスの衝突
-        // 座標更新が行われた後に呼び出す。次フレームの座標で計算するため。
-        // ダメだったら、git checkout で戻す。
-        public static bool BallPaddleCollisionCheck(Vector2 ballPos, float ballRadius,
-                                                    Vector2 rectPos, int rectWidth, int rectHeight)
+        // ballとrectの最近点計算による衝突判定(静的ブロック前提)
+        public static bool BallPaddleCollisionCheck(Ball ball, Rectangle rect)
         {
             Vector2 intersect = new(0, 0);  // ボールと長方形の最近点を求める
+            Vector2 ballPos = ball.Position ,rectPos = rect.Position;
 
-            // 最近点のX座標
+            // Paddleは動的ブロックなので次フレーム位置を使う
+            if(rect is Paddle pd)
+            {
+                rectPos = pd.NextPosition;
+                ballPos = ball.NextFramePosition;
+            }
+
+            // 最近点のX座標   
             // ball.x が rect より左にある時
             if (ballPos.X < rectPos.X)
             {
                 intersect.X = rectPos.X; // 最近点のX座標は rect の左辺
             }
             // ball.x が rect より右にある時
-            else if (ballPos.X > rectPos.X + rectWidth)
+            else if (ballPos.X > rectPos.X + rect.Width)
             {
-                intersect.X = rectPos.X + rectWidth;   // 最近点のX座標は rect の右辺
+                intersect.X = rectPos.X + rect.Width;   // 最近点のX座標は rect の右辺
             }
             // ball.x が rect の内側
             else
@@ -538,9 +551,9 @@ namespace breakout_game
                 intersect.Y = rectPos.Y; // 最近点のY座標は rect の上辺
             }
             // ball.y が rect より下にある時
-            else if (ballPos.Y > rectPos.Y + rectHeight)
+            else if (ballPos.Y > rectPos.Y + rect.Height)
             {
-                intersect.Y = rectPos.Y + rectHeight;    // 最近点のY座標は rect の底辺
+                intersect.Y = rectPos.Y + rect.Height;    // 最近点のY座標は rect の底辺
             }
             // ball.y が rect より内側にある時
             else
@@ -549,12 +562,26 @@ namespace breakout_game
             }
 
             // 求めた最近点とボールの中心座標で距離を計算して、それが半径より小さければ衝突
-            double distanseSqr = Math.Pow(ballPos.X - intersect.X, 2) +
+             double distanseSqr = Math.Pow(ballPos.X - intersect.X, 2) +
                                     Math.Pow(ballPos.Y - intersect.Y, 2);
+            
 
-            if (distanseSqr < Math.Pow(ballRadius, 2))
+            if (distanseSqr < Math.Pow(ball.Radius, 2))
             {
-                // Console.WriteLine($"Ball{ball.Position}: collides Block{rect.Position}");
+                if(rect is Paddle)
+                {
+                    return true; // Paddleとの衝突は押し戻ししない
+                }
+
+                // 最近点からボール中心に向かうベクトル
+                Vector2 dist = ballPos - intersect;
+                float penetrationDepth = ball.Radius - dist.Length();
+                // 押し戻しベクトル
+                Vector2 fixUpVector = Vector2.Normalize(dist) * penetrationDepth;
+                // ボールの位置を押し戻す
+                ball.SetNextPosition(ballPos + fixUpVector);
+                ball.ApplyNextPosition();
+
                 return true;
             }
             else
@@ -562,6 +589,33 @@ namespace breakout_game
                 return false;
             }
         } 
+        private static void FixUpOverlap(Ball b, Rectangle r)
+        {
+            float overlap_right = (b.Position.X+b.Radius) - (r.Position.X);
+            float overlap_down = (b.Position.Y+b.Radius) - (r.Position.Y);
+            float overlap_left = (r.Position.X+r.Width) - (b.Position.X-b.Radius);
+            float overlap_up = (r.Position.Y+r.Height) - (b.Position.Y-b.Radius);
+
+            float overlap_min = Math.Min(Math.Min(overlap_right,overlap_down) ,Math.Min(overlap_left,overlap_up));
+            if(overlap_min < 0)
+            {
+                return; // 重なっていない
+            }
+
+            if(overlap_min == overlap_right)
+            {
+                b.SetNextPosition( new Vector2(r.Position.X - b.Radius, b.Position.Y));
+            } else if(overlap_min == overlap_down)
+            {
+                b.SetNextPosition( new Vector2(b.Position.X, r.Position.Y - b.Radius));
+            } else if(overlap_min == overlap_left)
+            {
+                b.SetNextPosition( new Vector2(r.Position.X + r.Width + b.Radius, b.Position.Y));
+            } else if(overlap_min == overlap_up)
+            {
+                b.SetNextPosition( new Vector2(b.Position.X, r.Position.Y + r.Height + b.Radius));
+            }
+        }
     }
 
     /*-----------------------------------*/
@@ -617,7 +671,6 @@ namespace breakout_game
             
             // 衝突判定
             _collisionManager.Update();
-            // _ball.ResolveWallCollision(Window.Width, Window.Height);
             
             // 座標適用
             _ball.ApplyNextPosition();
