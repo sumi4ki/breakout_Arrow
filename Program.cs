@@ -526,7 +526,7 @@ namespace breakout_game
             
             info.Normal = normal;
             // 例）ボールが右側に移動していて、ブロックがそれより左にある。
-            if(maxEntry < 0 || minExit < 0 || maxEntry > 1.0f)
+            if(maxEntry < 0 || minExit < 0 || maxEntry > 1.0f || maxEntry > minExit)
             {
                 info.EntryTime = float.PositiveInfinity;
                 return false;    
