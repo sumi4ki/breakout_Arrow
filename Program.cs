@@ -619,6 +619,7 @@ namespace breakout_game
                 intersect.X = rectPos.X + rect.Width;   // 最近点のX座標は rect の右辺
             }
             // ball.x が rect の内側
+            // ball.x が rect の内側
             else
             {
                 intersect.X = ballPos.X;
@@ -635,6 +636,7 @@ namespace breakout_game
             {
                 intersect.Y = rectPos.Y + rect.Height;    // 最近点のY座標は rect の底辺
             }
+            // ball.y が rect より内側にある時
             // ball.y が rect より内側にある時
             else
             {
