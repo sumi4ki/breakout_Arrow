@@ -451,25 +451,6 @@ namespace breakout_game
                 remainingTime -= targetBlockInfo.EntryTime;               // まだ時間が残っている
             }
 
-            // 上に書いた理由からブロックとの判定が全て終わった後の方がいい
-             // Ball vs Paddle
-            if (BallPaddleCollisionCheck(_ball, _paddle))
-            {
-                // CollisionInfo info = new()
-                var infoBall = new CollisionInfo
-                {
-                    Object = _paddle,
-                    ContactPoint = _paddle.Position,
-                };
-                _ball.OnCollisionEnter(infoBall);
-                // paddle 側の処理も呼び出す
-                var infoPaddle = new CollisionInfo()
-                {
-                    Object = _ball,
-                    ContactPoint = _ball.Position,
-                };
-                _paddle.OnCollisionEnter(infoPaddle);
-            }
              // Ball vs Paddle
             if (BallPaddleCollisionCheck(_ball, _paddle))
             {
