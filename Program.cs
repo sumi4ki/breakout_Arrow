@@ -80,7 +80,6 @@ namespace breakout_game
         {
         }
 
-        // GameManagerのUpdateで呼び出さないと、Paddle が移動しない。
         public void ComputeNextPosition()
         {
             _nextPosition = _position;
@@ -151,7 +150,7 @@ namespace breakout_game
         {
             Type = type;
         }
-        // 衝突時の動作：派生クラスごとに変える想定
+        // 衝突時の動作
         public abstract void OnCollisionEnter(CollisionInfo other);
     }
 
@@ -174,7 +173,6 @@ namespace breakout_game
         }
     }
 
-    //あとGameManagerも別で作る予定
     internal class BlockManager
     {
         private List<Block> _blocks = new List<Block>();
@@ -260,8 +258,8 @@ namespace breakout_game
         private Vector2 _speed = new(20, 20);
         public Vector2 Speed => _speed;
         private Vector2 _dir = new(0, 0);
-        public Vector2 Direction => _dir; // 読み取り専用
-        public float maxBounceAngle = 60f;
+        public Vector2 Direction => _dir; 
+        public float maxBounceAngle = 75f;
 
         public Ball(int initXPos, int initYPos)
         {
@@ -371,7 +369,6 @@ namespace breakout_game
     /*------------------------------------*/
     internal class CollisionManager
     {
-        // Constructor-injected dependencies (non-nullable)
         private readonly Ball _ball;
         private readonly Paddle _paddle;
         private readonly List<Block> _blocks;
@@ -395,10 +392,7 @@ namespace breakout_game
                 // すでに衝突している場合、押し戻す
                 BallPaddleCollisionCheck(_ball, block);
             }
-            // DEBUG: ここにpaddleとの衝突判定を入れると、せっかくFIxUpして衝突しない座標に戻したのに
-            // position=nextPosition になっているせいで、paddleとballが次のフレームでぶつかることになる。
-            // それによって、SweptAABBする前に、またボールがWallBlockにめり込むから、めり込んでいる＝衝突とは見做さない
-            // という動作になり、ボールがめり込んだまま
+
 
             // Ball vs Blocks
             float remainingTime = 1.0f; // 1フレーム分の時間.padlle衝突はしない前提
@@ -495,7 +489,7 @@ namespace breakout_game
                 _paddle.OnCollisionEnter(infoPaddle);
             }
         }
-        // TODO: 壁の部分位パドルでボールが挟まるとボールが0,0にワープするバグがある
+
         // Swept AABB 衝突判定（ball は動き、block は静止している場合）
         // return true → info.EntryTime = EntryTime
         // return false → info.EntryTime = -1.0
@@ -596,11 +590,6 @@ namespace breakout_game
             {
                 rectPos = pd.NextPosition;
                 ballPos = ball.NextFramePosition;
-                // TODO: NextPosition使わなくても動くが、互いを向かわせる方向に衝突させると、
-                    // Currentの方だと2回衝突する。 NextPositionだと1回しか衝突しない。
-                    // CurrentだとSEを鳴らす時に問題になるかも。それ以外は問題なく動きそう。
-                // rectPos = pd.Position;
-                // ballPos = ball.Position;
             }
 
             // 最近点のX座標   
@@ -665,16 +654,7 @@ namespace breakout_game
                 Vector2 fixUpVector = Vector2.Normalize(dist) * penetrationDepth;
                 // ボールの位置を押し戻す. 少し余分に押し戻すことで、次フレームで再度衝突するのを防ぐ
                 if (rect is Block b )
-
                 {
-                    // if ( b.Type == BlockType.Wall)
-                    //     // ここに入る時には、fixUpVectorがNaNになっているから、いくらEpsilonを使っても意味ない
-                    //     ball.SetNextPosition(ballPos + fixUpVector * (1.0f + Epsilon*10000));
-
-                    // else
-                    // {
-                    //     ball.SetNextPosition(ballPos + fixUpVector * (1.0f + Epsilon));
-                    // }
                     ball.SetNextPosition(ballPos + fixUpVector * (1.0f + Epsilon));
                 } 
                 ball.ApplyNextPosition();
