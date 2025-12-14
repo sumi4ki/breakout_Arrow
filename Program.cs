@@ -8,10 +8,6 @@ using static Raylib_cs.Raylib;
 using Color = Raylib_cs.Color;
 using static breakout_game.Constants;
 
-// ブランチを変えたからここからスタート
-
-// 衝突の検知方法の実装の仕方でブランチを分ければいいのでは？？？？
-// is/asがメイン。collisionInfo, compareTag, の二つはサブブランチで
 namespace breakout_game
 {
     internal static class Constants
@@ -76,7 +72,7 @@ namespace breakout_game
     {
         private Vector2 _nextPosition;
         public Vector2 NextPosition => _nextPosition;
-        private readonly float _slideSpeed = 11;
+        private readonly float _slideSpeed = 15; // 11
         public float SlideSpeed => _slideSpeed;
         public bool IsActive { get; private set; } = true;
 
@@ -261,7 +257,7 @@ namespace breakout_game
         public Vector2 NextFramePosition => _nextFramePosition;
         public bool IsActive { get; private set; } = true;
 
-        private Vector2 _speed = new(10, 10);
+        private Vector2 _speed = new(20, 20);
         public Vector2 Speed => _speed;
         private Vector2 _dir = new(0, 0);
         public Vector2 Direction => _dir; // 読み取り専用
